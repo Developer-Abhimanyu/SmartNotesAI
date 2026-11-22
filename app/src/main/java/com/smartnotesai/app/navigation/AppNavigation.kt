@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.smartnotesai.feature.chat.ChatRoute
 import com.smartnotesai.feature.editor.EditorRoute
 import com.smartnotesai.feature.home.HomeScreen
 
@@ -13,6 +14,7 @@ private object AppRoutes {
     const val HOME = "home"
     const val EDITOR = "editor"
     const val EDITOR_WITH_ID = "editor/{noteId}"
+    const val CHAT = "chat"
 
     fun editor(noteId: String): String {
         return "editor/$noteId"
@@ -34,6 +36,9 @@ fun AppNavigation() {
                 },
                 onNoteClick = { noteId ->
                     navController.navigate("${AppRoutes.EDITOR}/$noteId")
+                },
+                onChatClick = {
+                    navController.navigate(AppRoutes.CHAT)
                 }
             )
         }
@@ -64,6 +69,10 @@ fun AppNavigation() {
                     navController.popBackStack()
                 }
             )
+        }
+
+        composable(AppRoutes.CHAT) {
+            ChatRoute()
         }
     }
 }

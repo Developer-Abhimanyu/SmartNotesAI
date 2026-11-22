@@ -2,9 +2,14 @@ package com.smartnotesai.feature.editor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.smartnotesai.domain.model.AiError
 import com.smartnotesai.domain.model.Note
+import com.smartnotesai.domain.usecase.CorrectGrammarUseCase
 import com.smartnotesai.domain.usecase.CreateNoteUseCase
+import com.smartnotesai.domain.usecase.GenerateMeetingSummaryUseCase
 import com.smartnotesai.domain.usecase.GetNoteByIdUseCase
+import com.smartnotesai.domain.usecase.RewriteTextUseCase
+import com.smartnotesai.domain.usecase.SummarizeNoteUseCase
 import com.smartnotesai.domain.usecase.UpdateNoteUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +25,11 @@ import kotlin.coroutines.cancellation.CancellationException
 class EditorViewModel @Inject constructor(
     private val createNoteUseCase: CreateNoteUseCase,
     private val getNoteByIdUseCase: GetNoteByIdUseCase,
-    private val updateNoteUseCase: UpdateNoteUseCase
+    private val updateNoteUseCase: UpdateNoteUseCase,
+    private val summarizeNoteUseCase: SummarizeNoteUseCase,
+    private val rewriteTextUseCase: RewriteTextUseCase,
+    private val correctGrammarUseCase: CorrectGrammarUseCase,
+    private val generateMeetingSummaryUseCase: GenerateMeetingSummaryUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(EditorUiState())
@@ -60,6 +69,46 @@ class EditorViewModel @Inject constructor(
                         errorMessage = null
                     )
                 }
+            }
+
+            is EditorUiAction.SummarizeNote -> {
+                summarizeNote()
+            }
+
+            is EditorUiAction.RewriteText -> {
+                rewriteText()
+            }
+
+            is EditorUiAction.ClearRewriteResult -> {
+                _uiState.update {
+                    it.copy(rewrittenText = null)
+                }
+            }
+
+            is EditorUiAction.RewriteStyleChanged -> {
+                if (action.style in RewriteTextUseCase.SUPPORTED_STYLES) {
+                    _uiState.update {
+                        it.copy(
+                            selectedRewriteStyle = action.style,
+                            rewrittenText = null,
+                            errorMessage = null
+                        )
+                    }
+                }
+            }
+
+            is EditorUiAction.ProofreadText -> {
+                proofreadText()
+            }
+
+            is EditorUiAction.ClearCorrectionResult -> {
+                _uiState.update {
+                    it.copy(correctedText = null)
+                }
+            }
+
+            is EditorUiAction.GenerateMeetingSummary -> {
+                generateMeetingSummary()
             }
         }
     }
@@ -194,6 +243,204 @@ class EditorViewModel @Inject constructor(
                     it.copy(
                         errorMessage = "Unable to save note",
                         isSaving = false
+                    )
+                }
+            }
+        }
+    }
+
+    private fun summarizeNote() {
+        val content = _uiState.value.content
+
+        if (content.isBlank()) {
+            _uiState.update {
+                it.copy(errorMessage = "Add some note content before summarizing")
+            }
+            return
+        }
+
+        if (_uiState.value.isSummarizing) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isSummarizing = true,
+                    summary = null,
+                    errorMessage = null
+                )
+            }
+
+            try {
+                val result = summarizeNoteUseCase(content)
+
+                _uiState.update {
+                    it.copy(
+                        summary = result,
+                        isSummarizing = false
+                    )
+                }
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Exception) {
+                val message = (exception as? AiError)?.toUserMessage()
+                    ?: "Unable to summarize note. Please try again."
+
+                _uiState.update {
+                    it.copy(
+                        isSummarizing = false,
+                        errorMessage = message
+                    )
+                }
+            }
+        }
+    }
+
+    private fun rewriteText() {
+        val currentState = _uiState.value
+
+        if (currentState.content.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Add some note content before rewriting"
+                )
+            }
+            return
+        }
+
+        if (currentState.isRewriting) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isRewriting = true,
+                    rewrittenText = null,
+                    errorMessage = null
+                )
+            }
+
+            try {
+                val result = rewriteTextUseCase(
+                    originalText = currentState.content,
+                    style = currentState.selectedRewriteStyle
+                )
+
+                _uiState.update {
+                    it.copy(
+                        rewrittenText = result,
+                        isRewriting = false
+                    )
+                }
+
+            } catch (exception: CancellationException) {
+                throw exception
+
+            } catch (exception: Exception) {
+                val message = (exception as? AiError)?.toUserMessage()
+                    ?: "Unable to rewrite text. Please try again."
+
+                _uiState.update {
+                    it.copy(
+                        isRewriting = false,
+                        errorMessage = message
+                    )
+                }
+            }
+        }
+    }
+
+    private fun proofreadText() {
+        val currentState = _uiState.value
+
+        if (currentState.content.isBlank()) {
+            _uiState.update {
+                it.copy(
+                    errorMessage = "Add some note content before proofreading"
+                )
+            }
+            return
+        }
+
+        if (currentState.isProofreading) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isProofreading = true,
+                    correctedText = null,
+                    errorMessage = null
+                )
+            }
+
+            try {
+                val result = correctGrammarUseCase(
+                    originalText = currentState.content
+                )
+
+                _uiState.update {
+                    it.copy(
+                        correctedText = result,
+                        isProofreading = false
+                    )
+                }
+
+            } catch (exception: CancellationException) {
+                throw exception
+
+            } catch (exception: Exception) {
+                val message = (exception as? AiError)?.toUserMessage()
+                    ?: "Unable to correct grammar. Please try again."
+
+                _uiState.update {
+                    it.copy(
+                        isProofreading = false,
+                        errorMessage = message
+                    )
+                }
+            }
+        }
+    }
+
+
+    private fun generateMeetingSummary() {
+        val notes = _uiState.value.content
+
+        if (notes.isBlank()) {
+            _uiState.update {
+                it.copy(errorMessage = "Meeting notes cannot be empty")
+            }
+            return
+        }
+
+        if (_uiState.value.isGeneratingMeetingSummary) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isGeneratingMeetingSummary = true,
+                    meetingSummary = null,
+                    errorMessage = null
+                )
+            }
+
+            try {
+                val result = generateMeetingSummaryUseCase(notes)
+
+                _uiState.update {
+                    it.copy(
+                        meetingSummary = result,
+                        isGeneratingMeetingSummary = false
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (exception: Exception) {
+                val message = (exception as? AiError)?.toUserMessage()
+                    ?: "Unable to generate meeting summary. Please try again."
+
+                _uiState.update {
+                    it.copy(
+                        isGeneratingMeetingSummary = false,
+                        errorMessage = message
                     )
                 }
             }

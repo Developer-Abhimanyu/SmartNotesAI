@@ -2,7 +2,9 @@ package com.smartnotesai.feature.home
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +34,7 @@ import com.smartnotesai.feature.home.components.NoteSortSelector
 fun HomeScreen(
     onAddNoteClick: () -> Unit,
     onNoteClick: (String) -> Unit,
+    onChatClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
 
@@ -83,7 +86,24 @@ fun HomeScreen(
         NoteSortSelector(selectedOrder = uiState.sortOrder, onOrderSelected = { order ->
             viewModel.onAction(HomeUiAction.SortOrderChanged(order))
         })
-        Button(onClick = onAddNoteClick) { Text("Add Note") }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = onAddNoteClick,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Add Note")
+            }
+
+            Button(
+                onClick = onChatClick,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Chat with AI")
+            }
+        }
 
         if (uiState.isLoading) {
             CircularProgressIndicator(

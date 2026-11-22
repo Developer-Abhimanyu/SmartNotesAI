@@ -1,6 +1,8 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -21,6 +23,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 
 }
 
@@ -28,6 +35,13 @@ dependencies {
     // Internal project dependencies
     implementation(project(":domain"))
     implementation(project(":core:designsystem"))
+
+    implementation(libs.androidx.activity.compose)
+
+    // Dependency Injection
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -41,4 +55,6 @@ dependencies {
 
     // Unit testing
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }

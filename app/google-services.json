@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "704271962006",
+    "project_id": "smartnotesai-655a7",
+    "storage_bucket": "smartnotesai-655a7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:704271962006:android:fce325ede5dd2a86b997b7",
+        "android_client_info": {
+          "package_name": "com.smartnotesai.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD91lbViZXwnlbH-0c-OH8ma-9PmIk2QiQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
