@@ -382,6 +382,108 @@ class ChatViewModelTest {
         assertEquals(3, fakeChatRepository.messages.size)
     }
 
+
+    @Test
+    fun `assistant message database failure displays database error`() = runTest {
+        // Arrange
+        fakeAiRepository.stream = flowOf("Kotlin Flow is powerful.")
+
+        // First call saves the user message successfully.
+        // Second call saves the completed assistant message and fails.
+        fakeChatRepository.saveMessageException =
+            IllegalStateException("Assistant message write failed")
+
+        fakeChatRepository.failOnSaveMessageCall = 2
+
+        viewModel.onAction(
+            ChatUiAction.PromptChanged("Explain Kotlin Flow")
+        )
+
+        // Act
+        viewModel.onAction(ChatUiAction.SendMessage)
+
+        advanceUntilIdle()
+
+        // Assert
+        val state = viewModel.uiState.value
+
+        assertEquals(
+            "Unable to save your conversation. Please try again.",
+            state.errorMessage
+        )
+
+        assertEquals(
+            "Kotlin Flow is powerful.",
+            state.streamedResponse
+        )
+
+        assertEquals(2, fakeChatRepository.saveMessageCallCount)
+        assertEquals(1, fakeAiRepository.streamCallCount)
+        assertFalse(state.isStreaming)
+    }
+
+
+    @Test
+    fun `image message database failure displays database error`() = runTest {
+        // Arrange
+        testImageFile.writeBytes(byteArrayOf(10, 20, 30))
+        fakeChatRepository.saveConversationException =
+            IllegalStateException("Database write failed")
+
+        viewModel.onAction(
+            ChatUiAction.ImageSelected(testImageUri)
+        )
+
+        // Act
+        viewModel.onAction(ChatUiAction.SendMessage)
+
+        advanceUntilIdle()
+
+        // Assert
+        val state = viewModel.uiState.value
+
+        assertEquals(
+            "Unable to save your conversation. Please try again.",
+            state.errorMessage
+        )
+
+        assertEquals(0, fakeAiRepository.imageStreamCallCount)
+        assertFalse(state.isStreaming)
+
+        assertEquals(
+            testImageUri,
+            state.selectedImageUri
+        )
+    }
+
+    @Test
+    fun `image processing failure preserves selected image and displays error`() = runTest {
+        // Arrange
+        testImageFile.writeBytes(byteArrayOf(1, 2, 3))
+        testImageProvider.mimeType = "image/gif"
+
+        viewModel.onAction(
+            ChatUiAction.ImageSelected(testImageUri)
+        )
+
+        // Act
+        viewModel.onAction(ChatUiAction.SendMessage)
+
+        advanceUntilIdle()
+
+        // Assert
+        val state = viewModel.uiState.value
+
+        assertEquals(
+            "Unable to process the selected image. Please try another image.",
+            state.errorMessage
+        )
+
+        assertEquals(testImageUri, state.selectedImageUri)
+        assertEquals(0, fakeAiRepository.imageStreamCallCount)
+        assertFalse(state.isStreaming)
+    }
+
     @Test
     fun `streaming failure resets loading state`() = runTest {
         fakeAiRepository.stream = flow {
@@ -408,6 +510,67 @@ class ChatViewModelTest {
             ChatRole.USER,
             fakeChatRepository.messages.first().role
         )
+    }
+
+
+    @Test
+    fun `database failure while saving user message displays error`() = runTest {
+        // Arrange
+        fakeChatRepository.saveMessageException =
+            IllegalStateException("Message write failed")
+
+        viewModel.onAction(
+            ChatUiAction.PromptChanged("Explain Kotlin Flow")
+        )
+
+        // Act
+        viewModel.onAction(ChatUiAction.SendMessage)
+
+        advanceUntilIdle()
+
+        // Assert
+        val state = viewModel.uiState.value
+
+        assertEquals(
+            "Unable to save your conversation. Please try again.",
+            state.errorMessage
+        )
+
+        assertFalse(state.isStreaming)
+        assertEquals(0, fakeAiRepository.streamCallCount)
+
+        // Conversation was saved, but message was not.
+        assertEquals(1, fakeChatRepository.conversations.size)
+        assertTrue(fakeChatRepository.messages.isEmpty())
+    }
+
+    @Test
+    fun `database failure while saving conversation displays error`() = runTest {
+        // Arrange
+        fakeChatRepository.saveConversationException =
+            IllegalStateException("Database write failed")
+
+        viewModel.onAction(
+            ChatUiAction.PromptChanged("Explain Kotlin Flow")
+        )
+
+        // Act
+        viewModel.onAction(ChatUiAction.SendMessage)
+
+        advanceUntilIdle()
+
+        // Assert
+        val state = viewModel.uiState.value
+
+        assertEquals(
+            "Unable to save your conversation. Please try again.",
+            state.errorMessage
+        )
+
+        assertFalse(state.isStreaming)
+
+        // AI generation should not start.
+        assertEquals(0, fakeAiRepository.streamCallCount)
     }
 
     @Test
@@ -497,8 +660,15 @@ class ChatViewModelTest {
 
     private class FakeChatRepository : ChatRepository {
 
+        var failOnSaveMessageCall: Int? = null
+
+        var saveMessageCallCount = 0
+
+        var saveMessageException: Exception? = null
+
         val conversations = mutableListOf<ChatConversation>()
         val messages = mutableListOf<ChatMessage>()
+        var saveConversationException: Exception? = null
 
         override fun getAllConversations():
                 Flow<List<ChatConversation>> {
@@ -532,6 +702,9 @@ class ChatViewModelTest {
         override suspend fun saveConversation(
             conversation: ChatConversation
         ) {
+            saveConversationException?.let {
+                throw it
+            }
             val index = conversations.indexOfFirst {
                 it.id == conversation.id
             }
@@ -544,6 +717,19 @@ class ChatViewModelTest {
         }
 
         override suspend fun saveMessage(message: ChatMessage) {
+            saveMessageCallCount++
+
+            if (saveMessageCallCount == failOnSaveMessageCall) {
+                throw saveMessageException
+                    ?: IllegalStateException("Message write failed")
+            }
+
+            saveMessageException?.let {
+                if (failOnSaveMessageCall == null) {
+                    throw it
+                }
+            }
+
             messages.add(message)
         }
 

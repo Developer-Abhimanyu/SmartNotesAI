@@ -23,6 +23,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,13 +105,27 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+
+
     private fun observeConversations() {
         conversationsJob = viewModelScope.launch {
-            getAllConversationsUseCase().collect { conversations ->
-                _uiState.update {
-                    it.copy(conversations = conversations)
+            getAllConversationsUseCase()
+                .catch { exception ->
+                    if (exception is CancellationException) {
+                        throw exception
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = "Unable to load conversations. Please try again."
+                        )
+                    }
                 }
-            }
+                .collect { conversations ->
+                    _uiState.update {
+                        it.copy(conversations = conversations)
+                    }
+                }
         }
     }
 
@@ -227,8 +242,20 @@ class ChatViewModel @Inject constructor(
 
         streamingJob = viewModelScope.launch {
             try {
-                saveConversationUseCase(conversation)
-                saveChatMessageUseCase(userMessage)
+                try {
+                    saveConversationUseCase(conversation)
+                    saveChatMessageUseCase(userMessage)
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    handleDatabaseError(
+                        userMessageId = userMessage.id,
+                        assistantMessageId = assistantMessage.id,
+                        previousConversation = currentState.conversation,
+                        previousPrompt = currentState.prompt
+                    )
+                    return@launch
+                }
 
                 generateChatResponseStreamUseCase(
                     history = history,
@@ -237,7 +264,13 @@ class ChatViewModel @Inject constructor(
                     updateAssistantResponse(assistantMessage.id, chunk)
                 }
 
-                saveCompletedAssistantMessage(assistantMessage)
+                try {
+                    saveCompletedAssistantMessage(assistantMessage)
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    handleAssistantSaveError()
+                }
 
             } catch (exception: CancellationException) {
                 throw exception
@@ -248,6 +281,14 @@ class ChatViewModel @Inject constructor(
                     it.copy(isStreaming = false)
                 }
             }
+        }
+    }
+
+    private fun handleAssistantSaveError() {
+        _uiState.update {
+            it.copy(
+                errorMessage = "Unable to save your conversation. Please try again."
+            )
         }
     }
 
@@ -296,7 +337,7 @@ class ChatViewModel @Inject constructor(
                 messages = it.messages + userMessage + assistantMessage,
                 streamedResponse = "",
                 isStreaming = true,
-                selectedImageUri = null,
+                selectedImageUri = uri,
                 prompt = "",
                 errorMessage = null
             )
@@ -304,14 +345,43 @@ class ChatViewModel @Inject constructor(
 
         streamingJob = viewModelScope.launch {
             try {
-                saveConversationUseCase(conversation)
-                saveChatMessageUseCase(userMessage)
-
-                // Image reading and processing must not block the main thread.
-                val imageInput = withContext(ioDispatcher) {
-                    imageUriProcessor.process(uri)
+                // Step 1: Save conversation and user message.
+                try {
+                    saveConversationUseCase(conversation)
+                    saveChatMessageUseCase(userMessage)
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    handleDatabaseError(
+                        userMessageId = userMessage.id,
+                        assistantMessageId = assistantMessage.id,
+                        previousConversation = currentState.conversation,
+                        previousPrompt = currentState.prompt,
+                        selectedImageUri = uri
+                    )
+                    return@launch
                 }
 
+                // Step 2: Process image on the IO dispatcher.
+                val imageInput = try {
+                    withContext(ioDispatcher) {
+                        imageUriProcessor.process(uri)
+                    }
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = "Unable to process the selected image. Please try another image."
+                        )
+                    }
+                    return@launch
+                }
+                _uiState.update {
+                    it.copy(selectedImageUri = null)
+                }
+
+                // Step 3: Generate AI response.
                 generateImageUnderstandingStreamUseCase(
                     image = imageInput,
                     prompt = prompt
@@ -319,7 +389,14 @@ class ChatViewModel @Inject constructor(
                     updateAssistantResponse(assistantMessage.id, chunk)
                 }
 
-                saveCompletedAssistantMessage(assistantMessage)
+                // Step 4: Save completed AI response.
+                try {
+                    saveCompletedAssistantMessage(assistantMessage)
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Exception) {
+                    handleAssistantSaveError()
+                }
 
             } catch (exception: CancellationException) {
                 throw exception
@@ -393,6 +470,29 @@ class ChatViewModel @Inject constructor(
         _uiState.update { state ->
             ChatUiState(
                 conversations = state.conversations
+            )
+        }
+    }
+
+
+    private fun handleDatabaseError(
+        userMessageId: String,
+        assistantMessageId: String,
+        previousConversation: ChatConversation?,
+        previousPrompt: String,
+        selectedImageUri: Uri? = null
+    ) {
+        _uiState.update { state ->
+            state.copy(
+                conversation = previousConversation,
+                messages = state.messages.filterNot {
+                    it.id == userMessageId ||
+                            it.id == assistantMessageId
+                },
+                prompt = previousPrompt,
+                selectedImageUri = selectedImageUri,
+                streamedResponse = "",
+                errorMessage = "Unable to save your conversation. Please try again."
             )
         }
     }
