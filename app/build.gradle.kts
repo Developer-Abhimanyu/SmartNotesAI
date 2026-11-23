@@ -19,7 +19,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.smartnotesai.app.HiltTestRunner"
     }
 
     buildTypes {
@@ -55,7 +55,12 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     implementation(platform(libs.firebase.bom))
-    implementation(libs.firebase.appcheck.debug)
+    // App Check providers: keep each provider in its own build variant
+    debugImplementation(libs.firebase.appcheck.debug)
+
+    releaseImplementation(
+        "com.google.firebase:firebase-appcheck-playintegrity"
+    )
 
     implementation(libs.androidx.navigation.compose)
 
@@ -74,4 +79,7 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    androidTestImplementation(libs.hilt.android.testing)
+    androidTestImplementation(project(":domain"))
+    kspAndroidTest(libs.hilt.compiler)
 }

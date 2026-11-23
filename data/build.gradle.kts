@@ -26,6 +26,7 @@ dependencies {
     // Internal modules
     implementation(project(":domain"))
     implementation(project(":core:database"))
+    implementation(project(":core:common"))
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

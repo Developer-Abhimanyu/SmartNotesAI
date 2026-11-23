@@ -18,7 +18,7 @@ import com.smartnotesai.core.database.entity.ChatMessageEntity
         ChatMessageEntity::class
     ],
     version = 2,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
