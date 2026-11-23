@@ -1,0 +1,44 @@
+
+# Gradle
+.gradle/
+**/build/
+
+# Android Studio
+*.iml
+.idea/
+.DS_Store
+
+# Local configuration
+/local.properties
+local.properties
+
+# Android build artifacts
+/captures
+.externalNativeBuild/
+.cxx/
+
+# Local environment and secrets
+.env
+.env.*
+*.jks
+*.keystore
+
+# Firebase and Google credentials
+service-account*.json
+google-services-debug.json
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+
+# Firebase and Google credentials
+service-account*.json
+google-services-debug.json
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
